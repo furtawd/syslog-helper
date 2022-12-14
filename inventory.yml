@@ -1,0 +1,34 @@
+syslog_servers:
+  hosts:
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root
+    hostnamegoeshere:
+      ansible_connection: ssh
+      ansible_host: "ipaddress"
+      ansible_user: root

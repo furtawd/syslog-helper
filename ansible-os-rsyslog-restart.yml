@@ -1,0 +1,14 @@
+---
+- hosts: all
+  gather_facts: false
+  tasks:
+    - name: Restart rsyslog Service
+      command: sudo service rsyslog restart
+
+    - name: Check rsyslog Service
+      command: sudo service rsyslog status
+      register: service_rsyslog_status
+
+    - name: Report rsyslog Status
+      debug:
+        var: service_rsyslog_status.stdout_lines

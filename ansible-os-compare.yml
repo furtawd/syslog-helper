@@ -1,0 +1,73 @@
+- name: GitLab/Ansible Repository Comparison - Splunk Heavy Forwarders
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Copy rsyslog configuration file to /etc/rsyslog.d
+      copy:
+        src: /home/GitLab/Splunk/heavy-forwarders/heavy-forwarder-os/etc/rsyslog.d/
+        dest: /etc/rsyslog.d/
+        owner: root
+        group: root
+        mode: '755'
+      with_items:
+        - filename.conf
+      register: syslog
+
+    - name: Output From rsyslog configuration copy
+      debug:
+        msg: "{{ syslog }}"
+      ignore_errors: yes
+
+    - name: Copy logrotate configuration files to /etc/logrotate.d
+      copy:
+        src: /home/GitLab/Splunk/heavy-forwarders/heavy-forwarder-os/etc/logrotate.d/
+        dest: /etc/logrotate.d/
+        owner: root
+        group: root
+        mode: '644'
+      with_items:
+        - syslog_splunk
+        - syslog
+      register: logrotate
+
+    - name: Output From logrotate configuration copy
+      debug:
+        msg: "{{ logrotate }}"
+      ignore_errors: yes
+
+    - name: Copy logrotate cron file to /etc/cron.hourly
+      copy:
+        src: /home/GitLab/Splunk/heavy-forwarders/heavy-forwarder-os/etc/cron.hourly/
+        dest: /etc/cron.hourly/
+        owner: root
+        group: root
+        mode: '740'
+      with_items:
+        - logrotate
+      register: logrotatecronhourly
+
+    - name: Output From cron hourly file copy
+      debug:
+        msg: "{{ logrotatecronhourly }}"
+      ignore_errors: yes
+
+    - copy:
+        content: "{{ 'Syslog_Directory_Changed,' ~ syslog.changed ~ ',' ~ '\nLogrotate_Directory_Changed,' ~ logrotate.changed ~ ',' ~ '\nLogrotatecronhourly_Directory_Changed,' ~ logrotatecronhourly.changed }}"
+        dest: "/home/checksum.csv"
+      ignore_errors: yes
+
+    - name: Run 'egrep' Command On Files
+      command: egrep "True|False" /home/checksum.csv
+      register: egrep
+      ignore_errors: yes
+
+    - name: Egrep Output
+      debug:
+        msg: "{{ egrep.stdout_lines }}"
+      ignore_errors: yes
+
+    - name: Fetch Remote Checksum Files and Write Them to Ansible Master Server
+      fetch:
+        src: /home/checksum.csv
+        dest: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/{{ inventory_hostname }}-checksum.csv
+        flat: yes

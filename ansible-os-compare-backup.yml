@@ -1,0 +1,42 @@
+- name: GitLab/Ansible Repository Comparison - Splunk Heavy Forwarders
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Compare Files in the local Ansible Repository to the rsyslog '/etc/rsyslog.d' Directory on the HF nodes
+      synchronize:
+        src: /home/automation/GitLab/Splunk/heavy-forwarders/heavy-forwarder-os/etc/rsyslog.d/
+        dest: /etc/rsyslog.d/
+        recursive: yes
+        delete: no
+        rsync_opts:
+        - "--chown=root:root"
+#        - "--chmod=Fu=rw,Fg=r,Fo=r"
+        - "--chmod=Du=rwx,Dg=rx,Do=rx,Fu=rw,Fg=r,Fo=r"
+      register: syslog
+      ignore_errors: yes
+
+    - name: Output From rsyslog Directory Rsync
+      debug:
+        msg: "{{ syslog }}"
+      ignore_errors: yes
+
+    - copy:
+        content: "{{ 'Syslog_Directory_Changed,' ~ syslog.changed }}"
+        dest: "/home/checksum.csv"
+      ignore_errors: yes
+
+    - name: Run 'egrep' Command On Files
+      command: egrep "True|False" /home/checksum.csv
+      register: egrep
+      ignore_errors: yes
+
+    - name: Egrep Output
+      debug:
+        msg: "{{ egrep.stdout_lines }}"
+      ignore_errors: yes
+
+    - name: Fetch Remote Checksum Files and Write Them to Ansible Master Server
+      fetch:
+        src: /home/checksum.csv
+        dest: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/{{ inventory_hostname }}-checksum.csv
+        flat: yes

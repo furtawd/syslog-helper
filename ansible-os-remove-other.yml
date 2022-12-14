@@ -1,0 +1,16 @@
+- name: Rename other files
+  hosts: all
+  tasks:
+    - name: Rename other Files
+      shell: |
+        for f in /data/log/other*;
+        do
+        mv -f $f "/data/log/to-be-removed-${f#*_}"
+        done
+      register: remove_other
+      ignore_errors: yes
+
+    - name: Rename Command Output
+      debug:
+        msg: "{{ remove_other.stdout_lines }}"
+      ignore_errors: yes

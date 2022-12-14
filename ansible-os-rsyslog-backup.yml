@@ -1,0 +1,16 @@
+- name: rsyslog Backup
+  hosts: all
+  gather_facts: false
+  vars:
+    - a_timestamp: "{{ timestamp.stdout }}"
+
+  tasks:
+  - name: Get a timestamp
+    command: date +%Y.%m.%d_%H.%M%p
+    register: timestamp
+
+  - name: Backup rsyslog Configuration File Before rsync of New Configuration File
+    copy:
+      src: /etc/rsyslog.d/syslog-ng.conf
+      dest: /root/SyslogPackage/syslog-ng.conf.{{a_timestamp}}
+      remote_src: yes

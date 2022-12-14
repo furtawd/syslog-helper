@@ -1,0 +1,193 @@
+---
+- name: GitLab Synchronization With Ansible
+  connection: local
+  gather_facts: false
+  hosts: all
+  tasks:
+    - name: Load The SSH Key
+      shell: |
+        eval `ssh-agent -s`
+        ssh-add /home/.ssh/id_rsa
+      ignore_errors: yes
+
+    - name: Delete The Previous Checksum Verification File
+      file:
+        path: checksum-verification.csv
+        state: absent
+      ignore_errors: yes
+
+# Clones The GitLab Splunk Heavy Forwarder  Repository To The Local Repository
+- name: Clone/Update The Local Ansible Repository From The GitLab Repository
+  connection: local
+  gather_facts: false
+  hosts: 127.0.0.1
+  vars:
+    project_dir: /home/mcs_automation/GitLab/Splunk/heavy-forwarders/heavy-forwarder-os
+    gitlab_ok: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-gitlab.sh 2>&1 | tee -a ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-gitlab.log
+    gitlab_backuprsyslog: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-rsyslog-backup.sh 2>&1 | tee ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-rsyslog-backup.log
+    gitlab_removeother: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-remove-other.sh 2>&1 | tee ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-remove-other.log
+    gitlab_compare: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-compare.sh 2>&1 | tee ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-compare.log
+    gitlab_restartrsyslog: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-rsyslog-restart.sh 2>&1 | tee ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-rsyslog-restart.log
+    gitlab_email: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-send-email.sh 2>&1 | tee ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-email.log
+    gitlab_email_service: ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/ansible-os-send-email-service.sh 2>&1 | tee ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-os-email-service.log
+
+  tasks:
+    - name: Sync updates between the GitLab Project Repository and the Ansible Project Repository
+      git:
+        repo: git@gitlab.com:<variable>/<directory to git repo>/heavy-forwarder-os.git
+        dest: "{{ project_dir }}"
+        clone: yes
+        update: yes
+        force: yes
+      register: clonedgit
+      ignore_errors: yes
+
+    - name: Boolean Statement For Repository Changes
+      debug:
+        msg: "Changes exist between the GitLab Repository and Ansible Repository: {{ clonedgit.changed }}"
+      ignore_errors: yes
+
+    - name: Reflects No Changes Found When Comparing The GitLab Repository With The Ansible Repository
+      script:  "{{ gitlab_ok }}"
+      register: gitlab_output
+      when: clonedgit.changed == false
+      ignore_errors: yes
+
+    - name: Backup rsyslog Configuration File when Updates to GitLab Repo Are Found
+      script:  "{{ gitlab_backuprsyslog }}"
+      register: gitlab_backuprsyslog_output
+      when: clonedgit.changed == true
+      ignore_errors: yes
+
+    - name: Rename other_ files
+      script:  "{{ gitlab_removeother }}"
+      register: gitlab_removeother_output
+      when: clonedgit.changed == true
+      ignore_errors: yes
+
+    - name: Compare The Directory Contents On The Local Ansible Repository With The rsyslog nodes using rsync
+      script: "{{ gitlab_compare }}"
+      register: compare_output
+      failed_when:
+        compare_output.rc != 0
+      ignore_errors: yes
+
+    - name: View Contents - Checksum Files
+      debug: var=item
+      with_file:
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+      register: files
+
+    - name: rsyslog Files Content Results Output
+      debug:
+        msg: "{{ files.results }}"
+
+    - name: Run 'egrep' Command On Files
+      shell: |
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+         egrep -o "True|False" <servername>-checksum.csv
+      register: egrep
+      ignore_errors: yes
+
+    - name: Egrep Command Output
+      debug:
+        msg: "{{ egrep.stdout_lines }}"
+      ignore_errors: yes
+
+    - name: Checksum Verification - Normal Operations
+      # Normal Ops - Occurs when GitLab/Ansible changes are synced properly with the forwarder server(s)
+      delegate_to: localhost
+      shell: |
+        printf '%s\n' Status Completed | paste -sd ',' >> ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/checksum-verification.csv
+        printf '%s\n' Unauthorized_Changes_Found No | paste -sd ',' >> ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/checksum-verification.csv
+        printf '%s\n' Timestamp `date "+%Y%m%d-%H%M%S"` | paste -sd ',' >> ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/checksum-verification.csv
+      register: checksum_verify
+      when: (clonedgit.changed == true and egrep.stdout_lines is search("True")) or (clonedgit.changed == false and not egrep.stdout_lines is search("True"))
+      ignore_errors: yes
+
+    - name: Checksum Verification - Unauthorized Changes Detected
+      # Occurs when no changes were found between GitLab/Ansible, but changes occurred manually on a heavy forwarder server
+      delegate_to: localhost
+      shell: |
+        printf '%s\n' Status Completed | paste -sd ',' >> ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/checksum-verification.csv
+        printf '%s\n' Unauthorized_Changes_Found Yes | paste -sd ',' >> ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/checksum-verification.csv
+        printf '%s\n' Timestamp `date "+%Y%m%d-%H%M%S"` | paste -sd ',' >> ~/Ansible/Splunk/heavy-forwarders/ansible-forwarder-os/checksum-verification.csv
+      register: checksum_verify
+      when: clonedgit.changed == false and egrep.stdout_lines is search("True")
+      ignore_errors: yes
+
+    - name: Checksum Verification Output
+      debug:
+        msg: "{{ checksum_verify }}"
+      ignore_errors: yes
+
+    - name: Initiates Restart of rsyslog Following Changes to Syslog Repository
+      script:  "{{ gitlab_restartrsyslog }}"
+      register: restart_output
+      failed_when:
+        restart_output.rc != 0
+      when: clonedgit.changed == true and files.results is search("Syslog_Directory_Changed,True")
+      ignore_errors: yes
+
+    - name: Restart rsyslog Shell Script Output
+      debug:
+        msg: "{{ restart_output }}"
+      when: clonedgit.changed == true and files.results is search("Syslog_Directory_Changed,True")
+      ignore_errors: yes
+
+    - name: Ansible Clean-Up Temp Files
+      file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - "<servername>-checksum.csv"
+        - ~/Ansible/Splunk/heavy-forwarders/ansible-os-logs/ansible-splunk-compare.log
+      ignore_errors: yes
+
+    - name: Sends An Automated Email When Unauthorized Changes Occur
+      script: "{{ gitlab_email }}"
+      register: email_output
+      failed_when:
+        email_output.rc != 0
+      when: clonedgit.changed == false and egrep.stdout_lines is search("True")
+      ignore_errors: yes
+
+    - name: Sends An Automated Email When Script Errors Occur
+      script: "{{ gitlab_email_service }}"
+      register: email_output_service
+      failed_when:
+        email_output_service.rc != 0
+      when: (clonedgit.changed == true and (compare_output.failed_when_result == true or restart_output.failed_when_result == true)) or (restart_output is search("error"))
+      ignore_errors: yes
+
+    - name: Automated Email for Unauthorized Changes Shell Script Output
+      debug:
+        msg: "{{ email_output }}"
+      when: clonedgit.changed == false and egrep.stdout_lines is search("True")
+      ignore_errors: yes
+
+    - name: Automated Email Shell Script Service Output
+      debug:
+        msg: "{{ email_output_service }}"
+      when: (clonedgit.changed == true and (compare_output.failed_when_result == true or restart_output.failed_when_result == true)) or (restart_output is search("error"))
+      ignore_errors: yes
